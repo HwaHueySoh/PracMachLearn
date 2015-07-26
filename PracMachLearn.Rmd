@@ -1,0 +1,184 @@
+---
+title: "Excercise Predictions"
+author: "Hwa Huey Soh"
+date: "Sunday, July 26, 2015"
+output: html_document
+---
+
+## Executive Summary
+
+A decision tree algorithm was compared with a random forests algorithm to determine the better predictor for quality of excercise based on measurements from weight lifting excercises.
+
+The better algorithm was then applied to a list of 20 observations to predict the quality of excercise in those cases.
+
+## Data Sources
+
+The data in the machine learning excercise is obtained from the HAR Dataset for benchmarking, freely available under the Creative Commons license. It had been modified to split out several lines of test data for the purposes of the assignment. 
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## About the Data
+
+Human Activity Recognition - HAR - has emerged as a key research area in the last years and is gaining increasing attention by the pervasive computing research community,especially for the development of context-aware systems. There are many potential applications for HAR, like: elderly monitoring, life log systems for monitoring energy expenditure and for supporting weight-loss programs, and digital assistants for weight lifting exercises.
+
+Human activity recognition research has traditionally focused on discriminating between different activities, i.e. to predict "which" activity was performed at a specific point in time. The approach proposed for the Weight Lifting Exercises dataset is to investigate "how (well)" an activity was performed by the wearer. The "how (well)" investigation has only received little attention so far, even though it potentially provides useful information for a large variety of applications,such as sports training.
+
+In the paper, the quality of execution is first defined and three aspects that pertain to qualitative activity recognition are investigated: the problem of specifying correct execution, the automatic and robust detection of execution mistakes, and how to provide feedback on the quality of execution to the user.
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+More information of the data can be obtained at the following website: http://groupware.les.inf.puc-rio.br/har
+
+```{r load_Libraries, echo=FALSE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+```
+
+## Preprocessing Data
+
+The data is downloaded from the course website and read with blanks and other errors in data read as NA.
+
+All code for processing and analysisng data is shown in the appendix.
+
+```{r read_files, echo=FALSE}
+training <- read.csv( "pml-training.csv", na.strings = c("NA","#DIV/0!", ""))
+testing <- read.csv( "pml-testing.csv", na.strings = c("NA","#DIV/0!", ""))
+```
+
+The training set is then partitioned into two data sets, to train and test the attempted machine learning algorithm respectively. 60% of the training data will be used to train the machine learning algorithm in the form of the iTrain dataset. We take a look at the labels for all the data columns.
+
+```{r partition_data, echo=FALSE}
+set.seed(1)
+partition <- createDataPartition(y = training$classe, p=0.6, list=FALSE)
+iTrain <- training[partition,]
+iTest <- training[-partition,]
+names(iTrain)
+```
+
+Start to build a list of data columns that will not help the machine learning process. These columns will be removed from all data.
+
+Columns that will be removed are:
+
+* username, timestamp and window columns
+* columns with more than 60% NA
+* columns with near zero variance
+
+```{r col_list, echo=FALSE}
+# Finding all columns that have near zero variance
+NZV <- nearZeroVar(iTrain, saveMetrics = TRUE)
+
+# Get list of row names that have near zero variance
+col_list <- row.names(NZV[ NZV$nzv==TRUE, ])
+
+for ( iName in names(iTrain) ) {
+  if ( grepl("user", iName) ) {
+    col_list <- c(col_list, iName)
+  }
+  if ( grepl("timestamp", iName) ) {
+    col_list <- c(col_list, iName)
+  }
+  if ( grepl("window", iName) ) {
+    col_list <- c(col_list, iName)
+  }
+  if ( sum( is.na( iTrain[,iName])) / nrow(iTrain) >= 0.6 ) {
+    col_list <- c(col_list, iName)
+  }
+}
+
+remove(NZV)
+
+# Remove duplicates
+col_list <- unique(col_list)
+
+col_list
+
+```
+
+Finally, the columns are removed from all the testing and training datasets.
+
+```{r remove_cols, echo=FALSE}
+iTrain <- iTrain[,!(names(iTrain) %in% col_list)]
+iTest <- iTest[,!(names(iTest) %in% col_list)]
+testing <- testing[,!(names(testing) %in% col_list)]
+```
+
+## Using a Decision Tree algorithm for prediction
+
+A Decision Tree algorithm is applied to the iTrain dataset, and the result is as follows:
+
+```{r decision_tree, echo= FALSE, fig.height=4, fig.width=6}
+DTree <- rpart(classe ~ ., data=iTrain, method="class")
+fancyRpartPlot(DTree)
+DTreePredict <- predict(DTree, iTest, type = "class")
+confusionMatrix( DTreePredict, iTest$classe)
+```
+
+A fairly high accuracy is seen here. A Random Forests algorithm is attempted to compare accuracy.
+
+## Using a Random Forests algorithm for prediction
+
+A Random Forests algorithm is applied to the iTrain dataset, and the result is as follows:
+
+```{r random_forest, echo=FALSE}
+RForest <- randomForest( classe ~ ., data=iTrain)
+RForestPredict <- predict( RForest, iTest, type = "class")
+confusionMatrix(RForestPredict, iTest$classe)
+```
+
+From the resulting accuracy, the decision tree algorithm performs minimally better with this dataset.
+
+## Generating Assignment Files
+
+The decision tree algorithm yielded a slightly better prediction in-sample and is thus applied to the testing dataset.
+
+```{r generate_files, echo=FALSE}
+DTreeTest <- predict( DTree, testing, type="class")
+
+pml_write_files <- function(prediction) {
+  for (i in 1:length(prediction)) {
+    filename = paste0("problem_id_",i,".txt")
+    write.table(prediction[i], file = filename, quote=FALSE, row.names=FALSE, col.names=FALSE)
+  }
+}
+
+pml_write_files(DTreeTest)
+DTreeTest
+```
+
+#Appendix
+
+Code used throughout the writeup is reproduced here:
+
+```{r load_Libraries, echo=TRUE, eval=FALSE}
+```
+
+```{r read_files, echo=TRUE, eval=FALSE}
+```
+
+```{r partition_data, echo=TRUE, eval=FALSE}
+```
+
+```{r col_list, echo=TRUE, eval=FALSE}
+```
+
+```{r remove_cols, echo=TRUE, eval=FALSE}
+```
+
+```{r decision_tree, echo=TRUE, eval=FALSE}
+```
+
+```{r random_forest, echo=TRUE, eval=FALSE}
+```
+
+```{r generate_files, echo=TRUE, eval=FALSE}
+```
